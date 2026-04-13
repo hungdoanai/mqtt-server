@@ -8,15 +8,15 @@ app.use(cors());
 
 const port = 3000;
 
-// 🔥 FIX ĐƯỜNG DẪN FILE
+// ===== FILE PATH =====
 const DATA_FILE = __dirname + "/data.json";
 
-// 🔥 nếu chưa có file → tạo
+// tạo file nếu chưa có
 if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, "[]");
 }
 
-// ================= MQTT =================
+// ===== MQTT =====
 const client = mqtt.connect(
   "mqtts://4477cf883375485e9156af4ed6ab121b.s1.eu.hivemq.cloud:8883",
   {
@@ -25,7 +25,7 @@ const client = mqtt.connect(
   }
 );
 
-// ================= LOAD DATA =================
+// ===== LOAD DATA =====
 let history = [];
 
 try {
@@ -36,7 +36,7 @@ try {
   history = [];
 }
 
-// ================= MQTT CONNECT =================
+// ===== MQTT CONNECT =====
 client.on("connect", () => {
   console.log("MQTT đã kết nối");
 
@@ -49,12 +49,12 @@ client.on("connect", () => {
   });
 });
 
-// ================= MQTT ERROR =================
+// ===== MQTT ERROR =====
 client.on("error", (err) => {
   console.log("MQTT lỗi:", err);
 });
 
-// ================= NHẬN DỮ LIỆU =================
+// ===== NHẬN DỮ LIỆU =====
 client.on("message", (topic, message) => {
   try {
     const data = JSON.parse(message.toString());
@@ -69,7 +69,7 @@ client.on("message", (topic, message) => {
       history.shift();
     }
 
-    // 🔥 GHI FILE ĐÚNG CHỖ
+    // lưu file
     fs.writeFileSync(DATA_FILE, JSON.stringify(history, null, 2));
 
     console.log("Đã lưu dữ liệu vào file");
@@ -79,19 +79,19 @@ client.on("message", (topic, message) => {
   }
 });
 
-// ================= API =================
+// ===== API =====
 
-// test server
+// test
 app.get("/", (req, res) => {
   res.send("Server MQTT + Data đang chạy OK");
 });
 
-// API lấy dữ liệu
+// lấy dữ liệu
 app.get("/data", (req, res) => {
   res.json(history);
 });
 
-// ================= START =================
+// ===== START =====
 app.listen(port, () => {
   console.log(`Server chạy tại http://localhost:${port}`);
 });
