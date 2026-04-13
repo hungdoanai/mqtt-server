@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Nhà kính MQTT PRO</title>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+  font-family: 'Segoe UI';
+  background: linear-gradient(to right, #eef2f7, #e0e7ff);
+  margin: 0;
+  padding: 10px;
+}
+
+.header {
+  text-align: center;
+  background: white;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  background: white;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.chart-container {
+  overflow-x: auto;
+  cursor: grab;
+}
+
+.chart-container:active {
+  cursor: grabbing;
+}
+
+canvas {
+  min-width: 800px;
+  height: 180px !important;
+}
+
+/* 🔥 TIMELINE */
+.timeline {
+  width: 100%;
+  height: 6px;
+  background: #ddd;
+  margin-top: 5px;
+  border-radius: 3px;
+  position: relative;
+}
+
+.timeline-bar {
+  height: 100%;
+  background: #3498db;
+  width: 100%;
+}
+
+.value {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+#log {
+  height: 80px;
+  overflow-y: auto;
+  font-size: 11px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <b>NHÀ KÍNH MQTT PRO</b><br>
+  Trạng thái: <span id="status">Đang kết nối...</span>
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    🌡 Nhiệt độ<br>
+    <span id="temp" class="value">--</span> °C
+    <div class="chart-container" id="tempWrap">
+      <canvas id="tempChart"></canvas>
+    </div>
+    <div class="timeline"><div class="timeline-bar" id="tempBar"></div></div>
+  </div>
+
+  <div class="card">
+    💧 Độ ẩm<br>
+    <span id="hum" class="value">--</span> %
+    <div class="chart-container" id="humWrap">
+      <canvas id="humChart"></canvas>
+    </div>
+    <div class="timeline"><div class="timeline-bar" id="humBar"></div></div>
+  </div>
+
+  <div class="card">
+    🌱 Ẩm đất<br>
+    <span id="soil" class="value">--</span> %
+    <div class="chart-container" id="soilWrap">
+      <canvas id="soilChart"></canvas>
+    </div>
+    <div class="timeline"><div class="timeline-bar" id="soilBar"></div></div>
+  </div>
+
+  <div class="card" style="grid-column: span 3;">
+    Log
+    <pre id="log"></pre>
+  </div>
+
+</div>
+
+<script>
+
+// ===== CONFIG =====
+const host = "wss://4477cf883375485e9156af4ed6ab121b.s1.eu.hivemq.cloud:8884/mqtt";
+const username = "hung00";
+const password = "0565241132aA";
+const topicSub = "esp32/sensor";
+
+const API_URL = "https://mqtt-server-vi36.onrender.com/data";
+
+// ===== LOG =====
+function log(msg){
+  const el = document.getElementById("log");
+  el.innerText += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+
+// ===== CHART =====
+function createChart(id){
+  return new Chart(document.getElementById(id),{
+    type:'line',
+    data:{
+      labels:[],
+      datasets:[{
+        data:[],
+        borderColor:'#3498db',
+        tension:0.3
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{
+          ticks:{
+            autoSkip:false,
+            maxRotation:45,
+            minRotation:45
+          }
+        }
+      }
+    }
+  });
+}
+
+const tempChart = createChart("tempChart");
+const humChart = createChart("humChart");
+const soilChart = createChart("soilChart");
+
+// ===== KÉO MƯỢT (INERTIA) =====
+function enableDragScroll(el){
+  let isDown = false;
+  let startX;
+  let scrollLeft;
+  let velocity = 0;
+
+  el.addEventListener("mousedown", (e)=>{
+    isDown = true;
+    startX = e.pageX - el.offsetLeft;
+    scrollLeft = el.scrollLeft;
+  });
+
+  el.addEventListener("mouseleave", ()=> isDown = false);
+  el.addEventListener("mouseup", ()=> isDown = false);
+
+  el.addEventListener("mousemove", (e)=>{
+    if(!isDown) return;
+    e.preventDefault();
+    const x = e.pageX - el.offsetLeft;
+    const walk = (x - startX);
+    velocity = walk;
+    el.scrollLeft = scrollLeft - walk;
+  });
+
+  // inertia
+  function momentum(){
+    if(Math.abs(velocity) > 0.5){
+      el.scrollLeft -= velocity;
+      velocity *= 0.95;
+      requestAnimationFrame(momentum);
+    }
+  }
+
+  el.addEventListener("mouseup", momentum);
+}
+
+// bật cho tất cả
+["tempWrap","humWrap","soilWrap"].forEach(id=>{
+  enableDragScroll(document.getElementById(id));
+});
+
+// ===== AUTO SCROLL (CHỈ KHI ĐANG Ở CUỐI) =====
+function autoScroll(el){
+  const nearEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 50;
+  if(nearEnd){
+    el.scrollLeft = el.scrollWidth;
+  }
+}
+
+// ===== TIMELINE =====
+function updateTimeline(el, bar){
+  const ratio = el.scrollLeft / (el.scrollWidth - el.clientWidth);
+  bar.style.width = (ratio * 100) + "%";
+}
+
+// ===== ADD DATA =====
+function addData(data){
+
+  const time = data.time || "--";
+
+  tempChart.data.labels.push(time);
+  tempChart.data.datasets[0].data.push(data.temperature);
+
+  humChart.data.labels.push(time);
+  humChart.data.datasets[0].data.push(data.humidity);
+
+  soilChart.data.labels.push(time);
+  soilChart.data.datasets[0].data.push(data.soil);
+
+  document.getElementById("temp").innerText = data.temperature;
+  document.getElementById("hum").innerText = data.humidity;
+  document.getElementById("soil").innerText = data.soil;
+
+  // auto scroll thông minh
+  autoScroll(tempWrap);
+  autoScroll(humWrap);
+  autoScroll(soilWrap);
+
+  // update timeline
+  updateTimeline(tempWrap, tempBar);
+  updateTimeline(humWrap, humBar);
+  updateTimeline(soilWrap, soilBar);
+}
+
+// ===== LOAD HISTORY =====
+window.onload = function(){
+  fetch(API_URL)
+    .then(res => res.json())
+    .then(dataList => {
+      dataList.forEach(addData);
+
+      tempChart.update();
+      humChart.update();
+      soilChart.update();
+
+      startMQTT();
+    });
+}
+
+// ===== MQTT =====
+function startMQTT(){
+  const client = mqtt.connect(host,{username,password});
+
+  client.on("connect", ()=>{
+    document.getElementById("status").innerText="Đã kết nối";
+    document.getElementById("status").style.color="green";
+    client.subscribe(topicSub);
+    log("MQTT connected");
+  });
+
+  client.on("message",(topic,message)=>{
+    const data = JSON.parse(message.toString());
+    addData(data);
+
+    tempChart.update();
+    humChart.update();
+    soilChart.update();
+  });
+}
+
+</script>
+
+</body>
+</html>
