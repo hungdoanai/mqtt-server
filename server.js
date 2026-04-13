@@ -8,24 +8,32 @@ app.use(cors());
 
 const port = 3000;
 
+// 🔥 FIX ĐƯỜNG DẪN FILE
+const DATA_FILE = __dirname + "/data.json";
+
+// 🔥 nếu chưa có file → tạo
+if (!fs.existsSync(DATA_FILE)) {
+  fs.writeFileSync(DATA_FILE, "[]");
+}
+
 // ================= MQTT =================
-const client = mqtt.connect("mqtts://4477cf883375485e9156af4ed6ab121b.s1.eu.hivemq.cloud:8883", {
-  username: "hung00",
-  password: "0565241132aA"
-});
+const client = mqtt.connect(
+  "mqtts://4477cf883375485e9156af4ed6ab121b.s1.eu.hivemq.cloud:8883",
+  {
+    username: "hung00",
+    password: "0565241132aA",
+  }
+);
 
 // ================= LOAD DATA =================
 let history = [];
 
-// load file nếu có
-if (fs.existsSync("data.json")) {
-  try {
-    history = JSON.parse(fs.readFileSync("data.json"));
-    console.log("Đã load dữ liệu cũ:", history.length);
-  } catch (e) {
-    console.log("Lỗi đọc file data.json");
-    history = [];
-  }
+try {
+  history = JSON.parse(fs.readFileSync(DATA_FILE));
+  console.log("Đã load dữ liệu cũ:", history.length);
+} catch (e) {
+  console.log("Lỗi đọc file → reset data");
+  history = [];
 }
 
 // ================= MQTT CONNECT =================
@@ -53,19 +61,21 @@ client.on("message", (topic, message) => {
 
     console.log("Nhận từ MQTT:", data);
 
-    // lưu vào mảng
+    // thêm dữ liệu
     history.push(data);
 
     // giữ tối đa 100 mẫu
-    if (history.length > 100) history.shift();
+    if (history.length > 100) {
+      history.shift();
+    }
 
-    // lưu file
-    fs.writeFileSync("data.json", JSON.stringify(history, null, 2));
+    // 🔥 GHI FILE ĐÚNG CHỖ
+    fs.writeFileSync(DATA_FILE, JSON.stringify(history, null, 2));
 
-    console.log("Đã lưu dữ liệu");
+    console.log("Đã lưu dữ liệu vào file");
 
   } catch (e) {
-    console.log("Lỗi parse JSON");
+    console.log("Lỗi parse JSON:", e.message);
   }
 });
 
@@ -76,7 +86,7 @@ app.get("/", (req, res) => {
   res.send("Server MQTT + Data đang chạy OK");
 });
 
-// 🔥 API QUAN TRỌNG (fix lỗi của bạn)
+// API lấy dữ liệu
 app.get("/data", (req, res) => {
   res.json(history);
 });
