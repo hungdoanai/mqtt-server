@@ -70,6 +70,7 @@ client.on("message", (topic, message) => {
     }
 
     // 🔥 GHI FILE ĐÚNG CHỖ
+    console.log("Đang ghi vào:", DATA_FILE);
     fs.writeFileSync(DATA_FILE, JSON.stringify(history, null, 2));
 
     console.log("Đã lưu dữ liệu vào file");
